@@ -21,14 +21,16 @@ has occured.
 #include "Differ.h"
 
 #include <sstream>
+#include <stdio.h>
+#include <tchar.h>
 
 CDiffer::CDiffer(IDifferCB* pDiffer):m_pOut(pDiffer){}
-CDiffer::CDiffer(IDifferCB* pDiffer, LPCSTR strFile):m_pOut(pDiffer){LoadDiffInfo(strFile);}
+CDiffer::CDiffer(IDifferCB* pDiffer, LPCTSTR strFile):m_pOut(pDiffer){LoadDiffInfo(strFile);}
 CDiffer::~CDiffer(){}
 
-void CDiffer::SaveDiffInfo(LPCSTR strFile)
+void CDiffer::SaveDiffInfo(LPCTSTR strFile)
 {
-	FILE* fout = fopen(strFile, "w");
+	FILE* fout = _tfopen(strFile, TEXT("w"));
 	if(!fout)return;
 
 	//We just create a text file:
@@ -41,9 +43,24 @@ void CDiffer::SaveDiffInfo(LPCSTR strFile)
 	fout=0;
 }
 
-void CDiffer::LoadDiffInfo(LPCSTR strFile)
+void CDiffer::SaveFileList(LPCTSTR strFile)
 {
-	FILE* fin = fopen(strFile, "r");
+	FILE* fout = _tfopen(strFile, TEXT("w"));
+	if(!fout)return;
+
+	//We just create a text file:
+	for(CFileTree::const_iterator c = m_Files.cbegin(); c != m_Files.cend(); c++)
+	{
+		fprintf(fout, "%s\n", c->first.c_str());
+	}
+
+	fclose(fout);
+	fout=0;
+}
+
+void CDiffer::LoadDiffInfo(LPCTSTR strFile)
+{
+	FILE* fin = _tfopen(strFile, TEXT("r"));
 	if(!fin)return;
 
 	while(!feof(fin))
@@ -58,18 +75,18 @@ void CDiffer::LoadDiffInfo(LPCSTR strFile)
 	fin=0;
 }
 
-void CDiffer::LoadDiffInfo_ParseLine(LPCSTR strLine)
+void CDiffer::LoadDiffInfo_ParseLine(LPCTSTR strLine)
 {
 	std::string strL(strLine);
 	//If the length is less than 18 then there is no date information
 	//so it is probably a bogus line (probably the last line).
-	if(strL.length() < 1)return;
+	if(strL.length() < 18)return;
 
 	SFileData FI;
 
 	std::string strHigh = strL.substr(0, 8);
 	std::string strLow  = strL.substr(9, 8);
-	std::string strFile = strL.substr(18, strL.length()-19);
+	std::string strFile = strL.substr(18, max(0, strL.length()-19));
 
 	FI.strFilename = strFile;
 
@@ -84,7 +101,7 @@ void CDiffer::LoadDiffInfo_ParseLine(LPCSTR strLine)
 }
 
 
-void CDiffer::AddFile(LPCSTR strFullPath, WIN32_FIND_DATA& FD)
+void CDiffer::AddFile(LPCTSTR strFullPath, WIN32_FIND_DATA& FD)
 {
 	SFileData FI;
 	FI.strFilename = strFullPath;
@@ -98,6 +115,11 @@ void CDiffer::ShowFiles()
 	{
 		m_pOut->OnDiff(this->SHOW, c->first.c_str());
 	}
+}
+
+int CDiffer::GetNumFiles()const
+{
+	return m_Files.size();
 }
 
 DWORD CDiffer::CompareTo(const CDiffer& rhs)

@@ -5,28 +5,73 @@
 #include <tchar.h>
 #include <Windows.h>
 #include <string>
+#include <stdarg.h>
 
 #include "Differ.h"
 
+static bool DiffDir_IsQuiet();
+
+void DiffDir_printf( const _TCHAR* strFormat, ...)
+{
+	if(DiffDir_IsQuiet())return;
+
+	va_list args;
+	va_start (args, strFormat);
+	_vtprintf (strFormat, args);
+	va_end (args);
+}
+
 class COutputter: public CDiffer::IDifferCB
 {
-	public: virtual void OnDiff(CDiffer::DIFF_T diff, LPCSTR strFilename)
+	public: virtual void OnDiff(CDiffer::DIFF_T diff, LPCTSTR strFilename)
 	{
 		switch(diff)
 		{
-		case CDiffer::SHOW:printf("\t%s\n", strFilename);break;
-		case CDiffer::DATE:printf("\t*: %s\n", strFilename);break;
-		case CDiffer::ADDED:printf("\t+: %s\n", strFilename);break;
-		case CDiffer::DELETED:printf("\t-: %s\n", strFilename);break;
-		//case CDiffer::SAME:printf("\tUNCHANGED: %s\n", strFilename);break;
-		//default:printf("%s: %u\n", strFilename, diff);break;
+		case CDiffer::SHOW   :DiffDir_printf(TEXT("\t%s\n"   ), strFilename);break;
+		case CDiffer::DATE   :DiffDir_printf(TEXT("\t*: %s\n"), strFilename);break;
+		case CDiffer::ADDED  :DiffDir_printf(TEXT("\t+: %s\n"), strFilename);break;
+		case CDiffer::DELETED:DiffDir_printf(TEXT("\t-: %s\n"), strFilename);break;
+		//case CDiffer::SAME   :DiffDir_printf(TEXT("\tUNCHANGED: %s\n"), strFilename);break;
+		//default:DiffDir_printf(TEXT("%s: %u\n"), strFilename, diff);break;
 		}
 	}
 };
 
-COutputter g_Outputter;
 
-void WalkDir(LPCSTR strDirIn, CDiffer& D)
+enum APP_M
+{
+	APP_DIFFDIR,
+	APP_LISTFILES,
+	APP_HELP,
+};
+
+
+//Global Data;
+static struct
+{
+	//Paths:
+	const _TCHAR* strInputDir;
+	const _TCHAR* strOutputFile;
+
+	//Application Mode:
+	APP_M Mode;
+
+	//Additional flags;
+	static const unsigned int F_QUIET = (1 << 0);
+
+	unsigned int Flags;
+
+	//Outputter:
+	COutputter Outputter;
+
+} Data;
+
+static bool DiffDir_IsQuiet()
+{
+	return 0 != (Data.F_QUIET&Data.Flags);
+}
+
+static void DiffDir_WalkDir(LPCTSTR strDirIn, CDiffer& D)
 {
 	std::string strDir(strDirIn);
 	if( '\\' != (strDir.at(strDir.length()-1)) )
@@ -55,7 +100,7 @@ void WalkDir(LPCSTR strDirIn, CDiffer& D)
 
 			std::string strSubDir(strDir);
 			strSubDir.append(FD.cFileName);
-			WalkDir(strSubDir.c_str(), D);
+			DiffDir_WalkDir(strSubDir.c_str(), D);
 		}
 		else
 		{
@@ -70,63 +115,168 @@ void WalkDir(LPCSTR strDirIn, CDiffer& D)
 	FindClose(hFind);
 }
 
+static int DiffDir_Diff()
+{
+	int nResult = 0;
 
+	CDiffer DiffScan(&Data.Outputter);
+
+	DiffDir_printf(TEXT("Scanning \"%s\"...\n"), Data.strInputDir);
+	DiffDir_WalkDir(Data.strInputDir, DiffScan);
+	DiffDir_printf(TEXT("Scanning completed.\n"));
+
+	DiffDir_printf(TEXT("Loading previous revision from \"%s\"...\n"), Data.strOutputFile);
+	CDiffer DiffPrev(&Data.Outputter, Data.strOutputFile);
+
+	DiffDir_printf(TEXT("Comparing revisions...\n"));
+
+	DWORD nNumDiffs = (DiffScan == DiffPrev);
+
+	//We only save the new diff info if there were diffs, that way an
+	//application can use the output file to detect for changes.
+
+	if(0 != nNumDiffs)
+	{
+		DiffDir_printf(TEXT("Updating \"%s\"...\n"), Data.strOutputFile);
+		DiffScan.SaveDiffInfo(Data.strOutputFile);
+	}
+
+	nResult = nNumDiffs;
+	DiffDir_printf(TEXT("%u diffs detected.\n"), nNumDiffs);
+
+	return nResult;
+}
+
+static int DiffDir_List()
+{
+	int nResult = 0;
+
+	CDiffer DiffScan(&Data.Outputter);
+	DiffDir_WalkDir(Data.strInputDir, DiffScan);
+	DiffScan.ShowFiles();
+	DiffScan.SaveFileList(Data.strOutputFile);
+	nResult = DiffScan.GetNumFiles();
+
+	return nResult;
+}
+
+
+static void DiffDir_GetParms(int argc, _TCHAR* argv[])
+{
+	//Clear the application data:
+	Data.Mode          = APP_DIFFDIR;
+	Data.strInputDir   = NULL;
+	Data.strOutputFile = NULL;
+	Data.Flags         = 0;
+
+	//We now check to see what the app parameters are:
+	enum NEXT_M
+	{
+		NEXT_PARM,
+		NEXT_INPUTDIR,
+		NEXT_OUTPUTFILE,
+	};
+
+
+	NEXT_M NextMode = NEXT_PARM;
+
+	for(int i=0; i<argc; i++)
+	{
+		const _TCHAR* strParm = argv[i];
+
+		if(NEXT_INPUTDIR == NextMode)
+		{
+			Data.strInputDir = strParm;
+			NextMode = NEXT_PARM;
+		}
+		else if(NEXT_OUTPUTFILE == NextMode)
+		{
+			Data.strOutputFile = strParm;
+			NextMode = NEXT_PARM;
+		}
+		else
+		{
+			NextMode = NEXT_PARM;
+
+			//Let's see what we got:
+			if(!_tcsicmp( TEXT( "-Q"),strParm))
+			{
+				Data.Flags |= Data.F_QUIET;
+			}
+			else if(!_tcsicmp( TEXT( "-L" ), strParm))
+			{
+				Data.Mode = APP_LISTFILES;
+			}
+			else if(!_tcsicmp( TEXT( "-H" ), strParm))
+			{
+				Data.Mode = APP_HELP;
+			}
+			else if(!_tcsicmp( TEXT( "-D" ), strParm))
+			{
+				NextMode = NEXT_INPUTDIR;
+			}
+			else if(!_tcsicmp( TEXT( "-O" ), strParm))
+			{
+				NextMode = NEXT_OUTPUTFILE;
+			}
+
+		}
+	}
+}
+
+static int DiffDir_Help(int argc, _TCHAR* argv[])
+{
+	//Unset the quiet flag if in help mode.
+	Data.Flags &= ~Data.F_QUIET;
+
+	DiffDir_printf(TEXT("Usage DiffDir.exe [-H] [-Q] [-L] -D \"inputdirectory\" -O \"outputfile\"\n"));
+	DiffDir_printf(TEXT("\tinputdirectory - The full path to the directory that you want to diff.\n"));
+	DiffDir_printf(TEXT("\toutputfile - The file that stores information about diff.\n"));
+	DiffDir_printf(TEXT("\n\
+If outputfile doesn't exist DiffDir creates the file and returns the number\n\
+of files found. If it does exist comparisons are made with the information\n\
+found and reported and the application returns the number of diffs found. The\n\
+outputfile will then be written with current information about the directory.\n"));
+
+	DiffDir_printf(TEXT("\nOptions:\n"));
+	DiffDir_printf(TEXT("\t-H: Print this help message.\n"));
+	DiffDir_printf(TEXT("\t-Q: Quiet mode, no output is written to the console.\n"));
+	DiffDir_printf(TEXT("\t-L: List mode. The output file contains a list of files in the directory, no diff is performed.\n"));
+	DiffDir_printf(TEXT("\t-D: Indicates that the next parameter will be the input directory.\n"));
+	DiffDir_printf(TEXT("\t-O: Indicates that the next parameter will be the output file.\n"));
+	
+	DiffDir_printf(TEXT("\nArguments received:\n"));
+	for(int i=0; i<argc; i++)
+	{
+		DiffDir_printf(TEXT("\targv[%i] = %s\n"), i, argv[i]);
+	}
+
+	return 0;
+}
 
 int _tmain(int argc, _TCHAR* argv[])
 {
-	printf("DiffDir v1.0 (c) 2011 Beem Software\n");
-	//Okay, so the first parameter should be the directory we want to scan, and
-	//the second should be the file to write our results to.
+	DiffDir_GetParms(argc, argv);
+
+	DiffDir_printf( TEXT("DiffDir v1.0 (c) 2011 Beem Software\n"));
+
+	//If there is no input file or output file, change mode to help.
+	if( NULL == Data.strInputDir || NULL == Data.strOutputFile)
+		Data.Mode = APP_HELP;
+
 	int nResult = 0;
-	if(argc < 3)
+	switch( Data.Mode )
 	{
-		printf("Usage DiffDir \"$directory\" \"$outputfile\"\n");
-		printf("$directory - The full path to the directory that you want to diff.\n");
-		printf("$outputfile - The file that stores information about the directory and compares previous information.\n");
-		printf("If $outputfile doesn't exist DiffDir returns 0 and creates the file. If it does exist comparisons are made with the information found and reported and the application returns 1.\n");
-		for(int i=0; i<argc; i++)
-		{
-			printf("argv[%i] = %s\n", i, argv[i]);
-		}
-	}
-	else
-	{
-		CDiffer DiffScan(&g_Outputter);
-
-		_TCHAR* strDir = argv[1];
-		_TCHAR* strOut = argv[2];
-		printf("Scanning \"%s\"...\n", strDir);
-		WalkDir(strDir, DiffScan);
-		printf("Scanning completed.\n");
-		//printf("Found the following files:\n");
-		//DiffScan.ShowFiles();
-
-		printf("Loading previous revision from \"%s\"...\n", strOut);
-		CDiffer DiffPrev(&g_Outputter, strOut);
-		//printf("Read in these files...\n");
-		//DiffPrev.ShowFiles();
-
-		printf("Comparing revisions...\n");
-
-		DWORD nNumDiffs = (DiffScan == DiffPrev);
-
-		//We only save the new diff info if there were diffs, that way an
-		//application can use the output file to detect for changes.
-
-		if(0 != nNumDiffs)
-		{
-			printf("Updating \"%s\"...\n", strOut);
-			DiffScan.SaveDiffInfo(strOut);
-		}
-
-		nResult = nNumDiffs;
-		printf("%u diffs detected.\n", nNumDiffs);
+		case APP_DIFFDIR  : nResult = DiffDir_Diff(); break;
+		case APP_LISTFILES: nResult = DiffDir_List(); break;
+		case APP_HELP     : nResult = DiffDir_Help(argc, argv); break;
 	}
 
 	#if defined(_DEBUG)
 	printf("Press any key...\n");
 	_getch();
 	#endif
+	
 	return nResult;
 }
 
