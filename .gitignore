@@ -1,3 +1,5 @@
+*.opensdf
 *.sdf
 *.suo
 *.Thumbs.db
+*.vcxproj.user
