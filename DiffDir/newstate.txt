@@ -1,0 +1,8 @@
+01D01A8F	648CBE8B	.\DiffDir.cpp
+01D01A8C	2AB313CF	.\DiffDir.vcxproj
+01D01A8A	C5BD8BEF	.\DiffDir.vcxproj.filters
+01D01A8F	6511342F	.\DiffDir.vcxproj.user
+01D01A8A	C5BE011F	.\Differ.cpp
+01D01A8A	C5BE282F	.\Differ.h
+01D01A8F	6B2488FF	.\newstate.txt
+01D01A8F	73295A4B	.\test.txt
