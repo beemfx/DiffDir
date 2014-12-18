@@ -11,7 +11,7 @@
 
 static bool DiffDir_IsQuiet();
 
-void DiffDir_printf( const _TCHAR* strFormat, ...)
+static void DiffDir_printf( const _TCHAR* strFormat, ...)
 {
 	if(DiffDir_IsQuiet())return;
 
@@ -51,6 +51,7 @@ static struct
 {
 	//Paths:
 	const _TCHAR* strInputDir;
+	const _TCHAR* strInputFile;
 	const _TCHAR* strOutputFile;
 
 	//Application Mode:
@@ -125,8 +126,8 @@ static int DiffDir_Diff()
 	DiffDir_WalkDir(Data.strInputDir, DiffScan);
 	DiffDir_printf(TEXT("Scanning completed.\n"));
 
-	DiffDir_printf(TEXT("Loading previous revision from \"%s\"...\n"), Data.strOutputFile);
-	CDiffer DiffPrev(&Data.Outputter, Data.strOutputFile);
+	DiffDir_printf(TEXT("Loading previous revision from \"%s\"...\n"), Data.strInputFile);
+	CDiffer DiffPrev(&Data.Outputter, Data.strInputFile);
 
 	DiffDir_printf(TEXT("Comparing revisions...\n"));
 
@@ -135,7 +136,7 @@ static int DiffDir_Diff()
 	//We only save the new diff info if there were diffs, that way an
 	//application can use the output file to detect for changes.
 
-	if(0 != nNumDiffs)
+	if( 0 != nNumDiffs )
 	{
 		DiffDir_printf(TEXT("Updating \"%s\"...\n"), Data.strOutputFile);
 		DiffScan.SaveDiffInfo(Data.strOutputFile);
@@ -166,6 +167,7 @@ static void DiffDir_GetParms(int argc, _TCHAR* argv[])
 	//Clear the application data:
 	Data.Mode          = APP_DIFFDIR;
 	Data.strInputDir   = NULL;
+	Data.strInputFile  = NULL;
 	Data.strOutputFile = NULL;
 	Data.Flags         = 0;
 
@@ -174,6 +176,7 @@ static void DiffDir_GetParms(int argc, _TCHAR* argv[])
 	{
 		NEXT_PARM,
 		NEXT_INPUTDIR,
+		NEXT_INPUTFILE,
 		NEXT_OUTPUTFILE,
 	};
 
@@ -187,6 +190,11 @@ static void DiffDir_GetParms(int argc, _TCHAR* argv[])
 		if(NEXT_INPUTDIR == NextMode)
 		{
 			Data.strInputDir = strParm;
+			NextMode = NEXT_PARM;
+		}
+		else if(NEXT_INPUTFILE == NextMode )
+		{
+			Data.strInputFile = strParm;
 			NextMode = NEXT_PARM;
 		}
 		else if(NEXT_OUTPUTFILE == NextMode)
@@ -219,8 +227,16 @@ static void DiffDir_GetParms(int argc, _TCHAR* argv[])
 			{
 				NextMode = NEXT_OUTPUTFILE;
 			}
-
+			else if(!_tcsicmp( TEXT( "-I" ), strParm))
+			{
+				NextMode = NEXT_INPUTFILE;
+			}
 		}
+	}
+
+	if( NULL == Data.strInputFile )
+	{
+		Data.strInputFile = Data.strOutputFile;
 	}
 }
 
@@ -241,10 +257,12 @@ outputfile will then be written with current information about the directory.\n"
 	DiffDir_printf(TEXT("\nOptions:\n"));
 	DiffDir_printf(TEXT("\t-H: Print this help message.\n"));
 	DiffDir_printf(TEXT("\t-Q: Quiet mode, no output is written to the console.\n"));
-	DiffDir_printf(TEXT("\t-L: List mode. The output file contains a list of files in the directory, no diff is performed.\n"));
+	DiffDir_printf(TEXT("\t-L: List mode. The output file contains a list of files in the\n\t    directory, no diff is performed.\n"));
 	DiffDir_printf(TEXT("\t-D: Indicates that the next parameter will be the input directory.\n"));
+	DiffDir_printf(TEXT("\t-I: Indicates that the next parameter will be the input file with the\n\t    state of the directory.\n\
+\t    This is optional, if it is not specified the output file will also\n\t    be used as an input file.\n"));
 	DiffDir_printf(TEXT("\t-O: Indicates that the next parameter will be the output file.\n"));
-	
+
 	DiffDir_printf(TEXT("\nArguments received:\n"));
 	for(int i=0; i<argc; i++)
 	{
@@ -258,10 +276,14 @@ int _tmain(int argc, _TCHAR* argv[])
 {
 	DiffDir_GetParms(argc, argv);
 
-	DiffDir_printf( TEXT("DiffDir v1.0 (c) 2011 Beem Software\n"));
+	DiffDir_printf( TEXT("DiffDir 1.1 (c) 2014 Beem Software\n"));
+	if( Data.strInputFile == Data.strOutputFile )
+	{
+		DiffDir_printf( TEXT("Using input file as output file.\n") );
+	}
 
 	//If there is no input file or output file, change mode to help.
-	if( NULL == Data.strInputDir || NULL == Data.strOutputFile)
+	if( NULL == Data.strInputDir || NULL == Data.strOutputFile )
 		Data.Mode = APP_HELP;
 
 	int nResult = 0;
