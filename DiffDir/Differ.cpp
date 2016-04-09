@@ -30,8 +30,9 @@ CDiffer::~CDiffer(){}
 
 void CDiffer::SaveDiffInfo(LPCTSTR strFile)
 {
-	FILE* fout = _tfopen(strFile, TEXT("w"));
-	if(!fout)return;
+	FILE* fout = NULL;
+	errno_t Res = _tfopen_s( &fout , strFile , TEXT("w") );
+	if(0 != Res || NULL == fout)return;
 
 	//We just create a text file:
 	for(CFileTree::const_iterator c = m_Files.cbegin(); c != m_Files.cend(); c++)
@@ -45,8 +46,9 @@ void CDiffer::SaveDiffInfo(LPCTSTR strFile)
 
 void CDiffer::SaveFileList(LPCTSTR strFile)
 {
-	FILE* fout = _tfopen(strFile, TEXT("w"));
-	if(!fout)return;
+	FILE* fout = NULL;
+	errno_t Res = _tfopen_s( &fout , strFile , TEXT("w") );
+	if(0 != Res || NULL == fout)return;
 
 	//We just create a text file:
 	for(CFileTree::const_iterator c = m_Files.cbegin(); c != m_Files.cend(); c++)
@@ -60,8 +62,9 @@ void CDiffer::SaveFileList(LPCTSTR strFile)
 
 void CDiffer::LoadDiffInfo(LPCTSTR strFile)
 {
-	FILE* fin = _tfopen(strFile, TEXT("r"));
-	if(!fin)return;
+	FILE* fin = NULL;
+	errno_t Res = _tfopen_s( &fin , strFile , TEXT("r") );
+	if(0 != Res || NULL == fin)return;
 
 	while(!feof(fin))
 	{
