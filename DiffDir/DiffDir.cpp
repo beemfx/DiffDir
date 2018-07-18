@@ -116,14 +116,37 @@ static void DiffDir_WalkDir(LPCTSTR strDirIn, CDiffer& D)
 	FindClose(hFind);
 }
 
+static void DiffDir_HandleSingleFile(LPCTSTR strDirIn, CDiffer& D)
+{
+	WIN32_FIND_DATA FD;
+	memset( &FD , 0 , sizeof(FD) );
+	HANDLE hFind = FindFirstFile( Data.strInputDir , &FD );
+	if( INVALID_HANDLE_VALUE != hFind )
+	{
+		D.AddFile( Data.strInputDir , FD );
+		FindClose( hFind );
+	}
+}
+
 static int DiffDir_Diff()
 {
 	int nResult = 0;
 
 	CDiffer DiffScan(&Data.Outputter);
 
-	DiffDir_printf(TEXT("Scanning \"%s\"...\n"), Data.strInputDir);
-	DiffDir_WalkDir(Data.strInputDir, DiffScan);
+	
+
+	DWORD RootAttributes = GetFileAttributes( Data.strInputDir );
+	if( (RootAttributes != INVALID_FILE_ATTRIBUTES) && ((RootAttributes&FILE_ATTRIBUTE_DIRECTORY) == 0 ) )
+	{
+		DiffDir_printf(TEXT("Diffing file \"%s\"...\n"), Data.strInputDir);
+		DiffDir_HandleSingleFile( Data.strInputDir , DiffScan );
+	}
+	else
+	{
+		DiffDir_printf(TEXT("Scanning \"%s\"...\n"), Data.strInputDir);
+		DiffDir_WalkDir(Data.strInputDir, DiffScan);
+	}
 	DiffDir_printf(TEXT("Scanning completed.\n"));
 
 	DiffDir_printf(TEXT("Loading previous revision from \"%s\"...\n"), Data.strInputFile);
